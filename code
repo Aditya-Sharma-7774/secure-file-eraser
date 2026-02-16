@@ -1,0 +1,137 @@
+import os
+import sys
+import struct
+import random
+import logging
+import time
+import tkinter as tk
+from tkinter import filedialog, messagebox
+
+DOD_PASSES = 3
+DEFAULT_PASSES = 7
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.FileHandler("file-eraser-x1.log", "w"),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+
+def overwrite_and_delete(path, passes, progress_cb=None):
+    try:
+        if not os.path.isfile(path):
+            logging.error(f"Not a file: {path}")
+            return False
+        size = os.path.getsize(path)
+        with open(path, "r+b") as f:
+            for p in range(1, passes+1):
+                f.seek(0)
+                if p == 1:
+                    pat = b'\xFF'
+                elif p == 2:
+                    pat = b'\x00'
+                elif p == 3:
+                    pat = struct.pack('>I', random.getrandbits(32))
+                else:
+                    pat = os.urandom(1)
+                for offset in range(0, size, 1048576):
+                    chunk = min(1048576, size - offset)
+                    f.write(pat * chunk)
+                    pct = ((p-1)+(offset+chunk)/size)/passes
+                    if progress_cb:
+                        progress_cb(pct, "Erasing...")
+                f.flush()
+                os.fsync(f.fileno())
+        try:
+            os.utime(path, (0, 0))
+            os.chmod(path, 0o666)
+        except Exception:
+            pass
+        os.remove(path)
+        gone = not os.path.exists(path)
+        logging.info("File %s: erased? %s", path, gone)
+        return gone
+    except Exception as e:
+        logging.error("Exception erasing %s: %s", path, e)
+        return False
+
+class ProgressPopup:
+    def _init_(self, message="Erasing..."):
+        self.top = tk.Toplevel()
+        self.top.title("Erasing...")
+        tk.Label(self.top, text=message).pack(pady=(10,0))
+        self.var = tk.DoubleVar()
+        self.scale = tk.Scale(self.top, variable=self.var, from_=0, to=100, orient="horizontal", length=300, showvalue=False)
+        self.scale.pack(padx=10,pady=10)
+        self.lab = tk.Label(self.top, text="0%")
+        self.lab.pack()
+        self.status = tk.Label(self.top, text="")
+        self.status.pack(pady=(5, 0))
+        self.top.protocol("WM_DELETE_WINDOW", lambda: None)
+
+    def update(self, val, status_msg=None):
+        self.var.set(int(val*100))
+        self.lab.config(text=f"{int(val*100)}%")
+        if status_msg:
+            self.status.config(text=status_msg)
+            self.top.title(status_msg)
+        self.top.update()
+
+    def complete(self, success):
+        if success:
+            self.update(1, "Successfully erased!")
+        else:
+            self.update(1, "Failed to erase!")
+        self.top.update()
+
+    def close(self):
+        self.top.destroy()
+
+def run_gui():
+    def choose_file():
+        p = filedialog.askopenfilename()
+        if p:
+            entry.delete(0, tk.END)
+            entry.insert(0, p)
+    def erase_file():
+        target = entry.get()
+        try:
+            passes = int(passes_var.get())
+            assert 1 <= passes <= 35
+        except Exception:
+            messagebox.showerror("Invalid", "Number of passes must be 1–35.")
+            return
+        if not os.path.isfile(target):
+            messagebox.showerror("Error", "Please select a valid file!")
+            return
+        if not messagebox.askyesno("Confirm", f"ERASE '{target}' PERMANENTLY?"):
+            return
+        popup = ProgressPopup()
+        # status will be live updated from overwrite_and_delete
+        ok = overwrite_and_delete(target, passes, popup.update)
+        popup.complete(ok)
+        time.sleep(0.5)
+        popup.close()
+        if ok:
+            messagebox.showinfo("Done", "File ERASED permanently!\nSee file-eraser-x1.log for details.")
+        else:
+            messagebox.showerror("Error", "File could not be erased. See file-eraser-x1.log.")
+
+    root = tk.Tk()
+    root.title("File Eraser X1 - Secure Windows File Shredder")
+    f = tk.Frame(root, padx=16, pady=15)
+    f.pack()
+    tk.Label(f, text="File:").grid(row=0, column=0)
+    entry = tk.Entry(f, width=42)
+    entry.grid(row=0, column=1, padx=4)
+    tk.Button(f, text="Browse", command=choose_file).grid(row=0, column=2, padx=4)
+    tk.Label(f, text="Passes:").grid(row=1, column=0, pady=(12,2))
+    passes_var = tk.StringVar(value=f"{DEFAULT_PASSES}")
+    tk.Entry(f, textvariable=passes_var, width=5).grid(row=1, column=1, sticky="w", pady=(12,2))
+    tk.Button(f, text="ERASE", fg="white", bg="red", width=15, command=erase_file).grid(row=2, column=1, pady=(17,5))
+    root.mainloop()
+
+if __name__ == "__main__":
+    run_gui()
