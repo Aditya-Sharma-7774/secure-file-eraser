@@ -1,0 +1,10 @@
+# Secure File Eraser - Backend Requirements
+# 
+# The Python backend is designed to run using Python's standard libraries
+# (http.server, tkinter, json, subprocess, struct, logging, etc.).
+# Therefore, there are ZERO external pip dependencies required to run the backend!
+# 
+# You can run it directly:
+#   python server.py
+#
+# No pip installations are needed.

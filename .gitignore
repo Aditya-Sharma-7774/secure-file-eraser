@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+file-eraser-web.log
+file-eraser-x1.log
+frontend/node_modules/
+frontend/dist/
+.mimocode/
+code
